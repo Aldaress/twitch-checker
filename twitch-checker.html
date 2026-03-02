@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Twitch Live Checker</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0d0f;
+    --surface: #16161a;
+    --border: #2a2a30;
+    --twitch: #9146ff;
+    --live: #ff4444;
+    --offline: #444455;
+    --text: #e8e8f0;
+    --muted: #666678;
+    --green: #00e676;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    padding: 40px 20px;
+  }
+
+  .noise {
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    opacity: 0.4;
+  }
+
+  .container { max-width: 680px; margin: 0 auto; position: relative; z-index: 1; }
+
+  header { display: flex; align-items: flex-end; gap: 14px; margin-bottom: 40px; }
+
+  .logo {
+    width: 48px; height: 48px; background: var(--twitch);
+    display: flex; align-items: center; justify-content: center;
+    clip-path: polygon(0 0, 80% 0, 100% 20%, 100% 100%, 0 100%);
+    flex-shrink: 0;
+  }
+  .logo svg { width: 28px; height: 28px; fill: white; }
+
+  h1 { font-family: 'Bebas Neue', sans-serif; font-size: 3rem; letter-spacing: 2px; line-height: 1; }
+  h1 span { color: var(--twitch); }
+
+  .subtitle { color: var(--muted); font-size: 0.72rem; letter-spacing: 1px; margin-bottom: 32px; text-transform: uppercase; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); padding: 24px; margin-bottom: 16px; }
+  .card-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.1rem; letter-spacing: 2px; color: var(--twitch); margin-bottom: 16px; }
+
+  .row { display: flex; gap: 10px; margin-bottom: 12px; }
+
+  input[type="text"] {
+    background: var(--bg); border: 1px solid var(--border);
+    color: var(--text); font-family: 'DM Mono', monospace;
+    font-size: 0.82rem; padding: 10px 14px; flex: 1; outline: none;
+    transition: border-color 0.2s;
+  }
+  input:focus { border-color: var(--twitch); }
+
+  button {
+    background: var(--twitch); color: white; border: none;
+    font-family: 'Bebas Neue', sans-serif; font-size: 1rem;
+    letter-spacing: 2px; padding: 10px 20px; cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s; white-space: nowrap;
+  }
+  button:hover { opacity: 0.85; }
+  button:active { transform: scale(0.98); }
+  button.secondary { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+  button.secondary:hover { border-color: var(--twitch); color: var(--text); }
+  button.danger { background: transparent; border: 1px solid var(--live); color: var(--live); }
+  button.danger:hover { background: rgba(255,68,68,0.1); opacity: 1; }
+
+  .help { font-size: 0.7rem; color: var(--muted); line-height: 1.8; margin-top: 8px; }
+  .help a { color: var(--twitch); text-decoration: none; }
+  .help a:hover { text-decoration: underline; }
+  .help code { background: var(--bg); border: 1px solid var(--border); padding: 1px 6px; font-size: 0.68rem; color: var(--text); }
+
+  .streamer-list { display: flex; flex-direction: column; gap: 8px; }
+
+  .streamer-tag {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--bg); border: 1px solid var(--border);
+    padding: 10px 14px; font-size: 0.82rem;
+  }
+  .streamer-tag .name { flex: 1; }
+  .streamer-tag .remove { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1rem; padding: 0 4px; line-height: 1; letter-spacing: 0; }
+  .streamer-tag .remove:hover { color: var(--live); }
+
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--offline); flex-shrink: 0; }
+  .status-dot.live { background: var(--live); box-shadow: 0 0 6px var(--live); animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  .result-item {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px; border: 1px solid var(--border); margin-bottom: 8px;
+    transition: border-color 0.2s, background 0.2s;
+    text-decoration: none; color: inherit;
+  }
+  a.result-item:hover { border-color: var(--twitch); background: rgba(145,70,255,0.05); }
+  .result-item.offline { opacity: 0.45; }
+
+  .result-info { flex: 1; min-width: 0; }
+  .result-name { font-family: 'Bebas Neue', sans-serif; font-size: 1.1rem; letter-spacing: 1px; }
+  .result-game { font-size: 0.7rem; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .result-viewers { font-size: 0.7rem; color: var(--twitch); text-align: right; margin-top: 3px; }
+
+  .live-badge { background: var(--live); color: white; font-family: 'Bebas Neue', sans-serif; font-size: 0.75rem; letter-spacing: 1px; padding: 2px 8px; }
+  .offline-badge { color: var(--muted); font-size: 0.72rem; letter-spacing: 1px; }
+
+  .message { font-size: 0.78rem; padding: 10px 14px; border-left: 3px solid; margin-bottom: 16px; }
+  .message.error { border-color: var(--live); color: #ff8080; background: rgba(255,68,68,0.05); }
+  .message.success { border-color: var(--green); color: var(--green); background: rgba(0,230,118,0.05); }
+  .message.info { border-color: var(--twitch); color: #b89cff; background: rgba(145,70,255,0.05); }
+  #msg { display: none; }
+
+  .auto-check { display: flex; align-items: center; gap: 10px; font-size: 0.75rem; color: var(--muted); margin-top: 14px; }
+  .toggle { position: relative; width: 34px; height: 18px; flex-shrink: 0; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; inset: 0; background: var(--border); cursor: pointer; transition: background 0.2s; }
+  .slider::before { content: ''; position: absolute; width: 12px; height: 12px; left: 3px; top: 3px; background: var(--muted); transition: transform 0.2s, background 0.2s; }
+  input:checked + .slider { background: rgba(145,70,255,0.3); }
+  input:checked + .slider::before { transform: translateX(16px); background: var(--twitch); }
+  .interval-input { width: 50px; padding: 4px 8px; font-size: 0.72rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: 'DM Mono', monospace; outline: none; }
+  .timer-text { color: var(--twitch); }
+
+  .auth-section { padding: 8px 0 4px; }
+  .auth-intro { color: var(--muted); font-size: 0.78rem; line-height: 1.9; margin-bottom: 20px; }
+  .auth-intro strong { color: var(--text); }
+  .auth-intro a { color: var(--twitch); text-decoration: none; }
+  .auth-intro a:hover { text-decoration: underline; }
+  .auth-intro code { background: var(--bg); border: 1px solid var(--border); padding: 1px 6px; font-size: 0.7rem; color: #ffd580; }
+
+  .login-row { display: flex; gap: 10px; align-items: stretch; }
+  .login-row input { font-size: 0.82rem; }
+
+  .auth-status { display: flex; align-items: center; gap: 12px; font-size: 0.8rem; }
+  .user-chip {
+    background: rgba(145,70,255,0.15); border: 1px solid var(--twitch);
+    padding: 6px 14px; color: var(--twitch);
+    font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; font-size: 0.95rem;
+  }
+
+  #results { margin-top: 16px; }
+</style>
+</head>
+<body>
+<div class="noise"></div>
+<div class="container">
+
+  <header>
+    <div class="logo">
+      <svg viewBox="0 0 24 24"><path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714z"/></svg>
+    </div>
+    <div>
+      <h1>TWITCH <span>LIVE</span></h1>
+    </div>
+  </header>
+
+  <p class="subtitle">// Stream watcher — auto-opens live tabs</p>
+
+  <div id="msg" class="message"></div>
+
+  <!-- ── Auth Card ── -->
+  <div class="card">
+    <div class="card-title">// 01 — Connect Twitch</div>
+
+    <div id="notLoggedIn" class="auth-section">
+      <div class="auth-intro">
+        Twitch requires a free developer app for API access. Here's how:<br>
+        1. Go to <a href="https://dev.twitch.tv/console/apps/create" target="_blank">dev.twitch.tv/console/apps/create</a><br>
+        2. Name it anything, set Category to <strong>Website Integration</strong><br>
+        3. Set OAuth Redirect URL to <code id="redirectDisplay"></code><br>
+        4. Click Create, then copy your <strong>Client ID</strong> and paste it below
+      </div>
+      <div class="login-row">
+        <input type="text" id="clientId" placeholder="Paste Client ID here" />
+        <button onclick="loginWithTwitch()">
+          Login with Twitch
+        </button>
+      </div>
+    </div>
+
+    <div id="loggedIn" style="display:none;">
+      <div class="auth-status">
+        <div class="status-dot live"></div>
+        <span style="color:var(--muted);font-size:0.75rem;">Connected as</span>
+        <div class="user-chip" id="userChip">—</div>
+        <button class="danger" onclick="logout()" style="padding:6px 14px;font-size:0.75rem;letter-spacing:1px;">Logout</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Streamers Card ── -->
+  <div class="card">
+    <div class="card-title">// 02 — Streamers to watch</div>
+    <div class="row">
+      <input type="text" id="streamerInput" placeholder="username  (e.g. xqc)" onkeydown="if(event.key==='Enter') addStreamer()" />
+      <button onclick="addStreamer()">Add</button>
+    </div>
+    <div id="streamerList" class="streamer-list"></div>
+  </div>
+
+  <!-- ── Check Card ── -->
+  <div class="card">
+    <div class="card-title">// 03 — Check & auto-open</div>
+    <div class="actions">
+      <button onclick="checkAll()">Check Now</button>
+      <button class="secondary" onclick="openAllLive()">Open All Live</button>
+    </div>
+    <div class="auto-check">
+      <label class="toggle">
+        <input type="checkbox" id="autoToggle" onchange="toggleAuto()">
+        <span class="slider"></span>
+      </label>
+      <span>Auto-check every</span>
+      <input type="number" class="interval-input" id="intervalInput" value="60" min="10" max="3600" />
+      <span>sec</span>
+      <span id="timerDisplay" class="timer-text"></span>
+    </div>
+    <div id="results"></div>
+  </div>
+
+</div>
+
+<script>
+  let streamers = [];
+  let accessToken = null;
+  let clientId = null;
+  let countdownTimer = null;
+  let countdown = 0;
+
+  const REDIRECT_URI = window.location.href.split('#')[0].split('?')[0];
+  document.getElementById('redirectDisplay').textContent = REDIRECT_URI;
+
+  // ── Storage ───────────────────────────────────────────────────────────────
+  function persist() {
+    localStorage.setItem('tc_data', JSON.stringify({ streamers, clientId }));
+  }
+
+  function hydrate() {
+    try {
+      const d = JSON.parse(localStorage.getItem('tc_data') || '{}');
+      streamers = d.streamers || [];
+      clientId = d.clientId || null;
+      if (clientId) document.getElementById('clientId').value = clientId;
+    } catch(e) {}
+  }
+
+  // ── OAuth ─────────────────────────────────────────────────────────────────
+  function loginWithTwitch() {
+    const id = document.getElementById('clientId').value.trim();
+    if (!id) { showMsg('Paste your Client ID first.', 'error'); return; }
+    clientId = id;
+    persist();
+    const p = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: REDIRECT_URI,
+      response_type: 'token',
+      scope: 'user:read:follows',
+    });
+    window.location.href = `https://id.twitch.tv/oauth2/authorize?${p}`;
+  }
+
+  function handleCallback() {
+    const hash = window.location.hash;
+    if (!hash) return;
+    const p = new URLSearchParams(hash.slice(1));
+    const token = p.get('access_token');
+    if (token) {
+      accessToken = token;
+      localStorage.setItem('tc_token', token);
+      history.replaceState(null, '', window.location.pathname);
+      fetchUser();
+    }
+  }
+
+  async function fetchUser() {
+    if (!accessToken || !clientId) return;
+    try {
+      const r = await fetch('https://api.twitch.tv/helix/users', {
+        headers: { 'Client-ID': clientId, 'Authorization': `Bearer ${accessToken}` }
+      });
+      if (!r.ok) { logout(); return; }
+      const d = await r.json();
+      setLoggedIn(d.data[0]?.display_name || 'User');
+    } catch { logout(); }
+  }
+
+  function setLoggedIn(name) {
+    document.getElementById('notLoggedIn').style.display = 'none';
+    document.getElementById('loggedIn').style.display = 'block';
+    document.getElementById('userChip').textContent = name;
+  }
+
+  function logout() {
+    accessToken = null;
+    localStorage.removeItem('tc_token');
+    document.getElementById('notLoggedIn').style.display = 'block';
+    document.getElementById('loggedIn').style.display = 'none';
+    document.getElementById('results').innerHTML = '';
+    showMsg('Logged out.', 'info');
+  }
+
+  // ── Streamers ─────────────────────────────────────────────────────────────
+  function addStreamer() {
+    const inp = document.getElementById('streamerInput');
+    const val = inp.value.trim().toLowerCase().replace(/^@/, '');
+    if (!val) return;
+    if (streamers.includes(val)) { showMsg(`${val} is already in the list.`, 'error'); return; }
+    streamers.push(val);
+    inp.value = '';
+    persist();
+    renderStreamers();
+  }
+
+  function removeStreamer(name) {
+    streamers = streamers.filter(s => s !== name);
+    persist();
+    renderStreamers();
+  }
+
+  function renderStreamers() {
+    const el = document.getElementById('streamerList');
+    if (!streamers.length) {
+      el.innerHTML = '<div style="color:var(--muted);font-size:0.75rem;padding:8px 0;">No streamers yet — add some above.</div>';
+      return;
+    }
+    el.innerHTML = streamers.map(s => `
+      <div class="streamer-tag">
+        <div class="status-dot" id="dot-${s}"></div>
+        <span class="name">${s}</span>
+        <button class="remove" onclick="removeStreamer('${s}')">✕</button>
+      </div>
+    `).join('');
+  }
+
+  // ── API ───────────────────────────────────────────────────────────────────
+  async function getLiveData() {
+    const query = streamers.map(s => `user_login=${encodeURIComponent(s)}`).join('&');
+    const r = await fetch(`https://api.twitch.tv/helix/streams?${query}`, {
+      headers: { 'Client-ID': clientId, 'Authorization': `Bearer ${accessToken}` }
+    });
+    if (r.status === 401) { logout(); throw new Error('Session expired. Please log in again.'); }
+    if (!r.ok) { const e = await r.json(); throw new Error(e.message || `HTTP ${r.status}`); }
+    return (await r.json()).data;
+  }
+
+  async function checkAll() {
+    if (!accessToken) { showMsg('Login with Twitch first.', 'error'); return; }
+    if (!streamers.length) { showMsg('Add some streamers first.', 'error'); return; }
+
+    const el = document.getElementById('results');
+    el.innerHTML = '<div style="color:var(--muted);font-size:0.75rem;padding:10px 0;">Checking...</div>';
+
+    try {
+      const live = await getLiveData();
+      const liveMap = {};
+      live.forEach(s => { liveMap[s.user_login.toLowerCase()] = s; });
+
+      let html = '';
+      let count = 0;
+
+      streamers.forEach(name => {
+        const dot = document.getElementById(`dot-${name}`);
+        const s = liveMap[name];
+        if (s) {
+          count++;
+          if (dot) dot.classList.add('live');
+          html += `<a class="result-item" href="https://twitch.tv/${name}" target="_blank" rel="noopener">
+            <div class="status-dot live"></div>
+            <div class="result-info">
+              <div class="result-name">${name}</div>
+              <div class="result-game">${s.game_name || '—'} · ${s.title || ''}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <div class="live-badge">LIVE</div>
+              <div class="result-viewers">${Number(s.viewer_count).toLocaleString()} viewers</div>
+            </div>
+          </a>`;
+        } else {
+          if (dot) dot.classList.remove('live');
+          html += `<div class="result-item offline">
+            <div class="status-dot"></div>
+            <div class="result-info"><div class="result-name">${name}</div></div>
+            <span class="offline-badge">offline</span>
+          </div>`;
+        }
+      });
+
+      el.innerHTML = html;
+      showMsg(`${count} of ${streamers.length} live.`, count > 0 ? 'success' : 'info');
+    } catch(e) {
+      el.innerHTML = '';
+      showMsg(e.message, 'error');
+    }
+  }
+
+  async function openAllLive() {
+    if (!accessToken) { showMsg('Login with Twitch first.', 'error'); return; }
+    if (!streamers.length) { showMsg('Add some streamers first.', 'error'); return; }
+    try {
+      const live = await getLiveData();
+      if (!live.length) { showMsg('No one is live right now.', 'info'); return; }
+      live.forEach(s => window.open(`https://twitch.tv/${s.user_login}`, '_blank'));
+      showMsg(`Opened ${live.length} tab${live.length > 1 ? 's' : ''}.`, 'success');
+    } catch(e) {
+      showMsg(e.message, 'error');
+    }
+  }
+
+  // ── Auto-check ────────────────────────────────────────────────────────────
+  function toggleAuto() {
+    document.getElementById('autoToggle').checked ? startAuto() : stopAuto();
+  }
+
+  function startAuto() {
+    stopAuto();
+    const secs = Math.max(10, parseInt(document.getElementById('intervalInput').value) || 60);
+    countdown = secs;
+    updateCountdown();
+    checkAll();
+    countdownTimer = setInterval(() => {
+      countdown--;
+      updateCountdown();
+      if (countdown <= 0) { countdown = secs; checkAll(); }
+    }, 1000);
+  }
+
+  function stopAuto() {
+    clearInterval(countdownTimer);
+    document.getElementById('timerDisplay').textContent = '';
+  }
+
+  function updateCountdown() {
+    document.getElementById('timerDisplay').textContent = `(next in ${countdown}s)`;
+  }
+
+  // ── Notify utils ──────────────────────────────────────────────────────────
+  let msgTimeout;
+  function showMsg(text, type = 'info') {
+    const el = document.getElementById('msg');
+    el.textContent = text;
+    el.className = `message ${type}`;
+    el.style.display = 'block';
+    clearTimeout(msgTimeout);
+    msgTimeout = setTimeout(() => { el.style.display = 'none'; }, 4000);
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  hydrate();
+  handleCallback();
+
+  const storedToken = localStorage.getItem('tc_token');
+  if (storedToken && clientId) {
+    accessToken = storedToken;
+    fetchUser();
+  }
+
+  renderStreamers();
+</script>
+</body>
+</html>
