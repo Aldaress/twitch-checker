@@ -218,7 +218,7 @@
     </div>
     <div class="auto-check">
       <label class="toggle">
-        <input type="checkbox" id="autoToggle" onchange="toggleAuto()">
+        <input type="checkbox" id="autoToggle" onchange="toggleAuto()" checked>
         <span class="slider"></span>
       </label>
       <span>Auto-check every</span>
@@ -491,15 +491,18 @@
 
   // ── Init ──────────────────────────────────────────────────────────────────
   hydrate();
-  handleCallback();
+handleCallback();
 
-  const storedToken = localStorage.getItem('tc_token');
-  if (storedToken && clientId) {
-    accessToken = storedToken;
-    fetchUser();
-  }
+const storedToken = localStorage.getItem('tc_token');
+if (storedToken && clientId) {
+  accessToken = storedToken;
+  fetchUser().then(() => {
+    // Auto-start the interval check once session is confirmed valid
+    startAuto();
+  });
+}
 
-  renderStreamers();
+renderStreamers();
 </script>
 </body>
 </html>
