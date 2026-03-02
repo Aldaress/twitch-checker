@@ -183,9 +183,7 @@
       </div>
       <div class="login-row">
         <input type="text" id="clientId" placeholder="Paste Client ID here" />
-        <button onclick="loginWithTwitch()">
-          Login with Twitch
-        </button>
+        <button onclick="loginWithTwitch()">Login with Twitch</button>
       </div>
     </div>
 
@@ -237,12 +235,9 @@
   let clientId = null;
   let countdownTimer = null;
   let countdown = 0;
-
-  // Tracks which streamers currently have an open tab this session
-  // Key: username, value: true if tab was opened and streamer was live last check
   let openedTabs = {};
-  // Tracks live state from last check to detect transitions (offline → live)
   let lastLiveState = {};
+  let tabQueue = [];
 
   const REDIRECT_URI = window.location.href.split('#')[0].split('?')[0];
   document.getElementById('redirectDisplay').textContent = REDIRECT_URI;
@@ -387,15 +382,12 @@
           count++;
           if (dot) dot.classList.add('live');
 
-          // Auto-open tab only if they just went live (weren't live last check)
-          // OR this is the very first check ever for this streamer (no prior state)
           const tabAlreadyOpen = openedTabs[name];
-
-if (!tabAlreadyOpen) {
-  window.open(`https://twitch.tv/${name}`, '_blank');
-  openedTabs[name] = true;
-  autoOpened.push(name);
-}
+          if (!tabAlreadyOpen) {
+            openedTabs[name] = true;
+            tabQueue.push(name);
+            autoOpened.push(name);
+          }
 
           html += `<a class="result-item" href="https://twitch.tv/${name}" target="_blank" rel="noopener">
             <div class="status-dot live"></div>
@@ -410,7 +402,6 @@ if (!tabAlreadyOpen) {
           </a>`;
         } else {
           if (dot) dot.classList.remove('live');
-          // They went offline — reset so next time they go live a tab opens again
           if (wasLive) openedTabs[name] = false;
 
           html += `<div class="result-item offline">
@@ -423,8 +414,23 @@ if (!tabAlreadyOpen) {
         lastLiveState[name] = isLive;
       });
 
-      persist(); // save updated lastLiveState
+      persist();
       el.innerHTML = html;
+
+      // Flush tab queue via anchor click
+      if (tabQueue.length) {
+        tabQueue.forEach(name => {
+          const a = document.createElement('a');
+          a.href = `https://twitch.tv/${name}`;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          a.style.display = 'none';
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(() => document.body.removeChild(a), 500);
+        });
+        tabQueue = [];
+      }
 
       if (autoOpened.length) {
         showMsg(`${autoOpened.join(', ')} just went live — tab opened!`, 'success');
@@ -490,18 +496,15 @@ if (!tabAlreadyOpen) {
 
   // ── Init ──────────────────────────────────────────────────────────────────
   hydrate();
-handleCallback();
+  handleCallback();
 
-const storedToken = localStorage.getItem('tc_token');
-if (storedToken && clientId) {
-  accessToken = storedToken;
-  fetchUser().then(() => {
-    // Auto-start the interval check once session is confirmed valid
-    startAuto();
-  });
-}
+  const storedToken = localStorage.getItem('tc_token');
+  if (storedToken && clientId) {
+    accessToken = storedToken;
+    fetchUser().then(() => { startAuto(); });
+  }
 
-renderStreamers();
+  renderStreamers();
 </script>
 </body>
 </html>
