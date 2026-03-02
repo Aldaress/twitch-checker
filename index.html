@@ -389,14 +389,13 @@
 
           // Auto-open tab only if they just went live (weren't live last check)
           // OR this is the very first check ever for this streamer (no prior state)
-          const justWentLive = !wasLive;
           const tabAlreadyOpen = openedTabs[name];
 
-          if (justWentLive && !tabAlreadyOpen) {
-            window.open(`https://twitch.tv/${name}`, '_blank');
-            openedTabs[name] = true;
-            autoOpened.push(name);
-          }
+if (!tabAlreadyOpen) {
+  window.open(`https://twitch.tv/${name}`, '_blank');
+  openedTabs[name] = true;
+  autoOpened.push(name);
+}
 
           html += `<a class="result-item" href="https://twitch.tv/${name}" target="_blank" rel="noopener">
             <div class="status-dot live"></div>
